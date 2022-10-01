@@ -1,6 +1,7 @@
 //Name
 //CS3750
 //PROJECT 1
+package project1.Receiver;
 
 import java.io.*;
 import java.nio.file.Files;

@@ -1,6 +1,7 @@
 //Name
 //CS3750
 //PROJECT 1
+package project1.KeyGen;
 
 import javax.crypto.spec.SecretKeySpec;
 import java.io.*;

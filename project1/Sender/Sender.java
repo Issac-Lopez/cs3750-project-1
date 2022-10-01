@@ -1,13 +1,13 @@
 //Name
 //CS3750
 //PROJECT 1
+package project1.Sender;
 
 import java.io.*;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.*;
 import java.security.spec.RSAPublicKeySpec;
-import java.security.spec.RSAPrivateKeySpec;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.math.BigInteger;
@@ -18,8 +18,7 @@ public class Sender {
     private static int BUFFER_SIZE = 32 * 1024;
     static String IV = "AAAAAAAAAAAAAAAA";
     static byte[] SHA256M;
-    public Sender() throws IOException {
-    }
+
     // 1. keys copied to the Sender folder
     public static void main(String[] args) throws Exception {
         int sizeOfByteArray;
@@ -37,6 +36,7 @@ public class Sender {
         SHA256M = hashingMessage(messageFileName); //32 bytes long
         String messagedd = "message.dd";
         FileOutputStream fileOut = new FileOutputStream(new File(messagedd));
+        // Use try-with-resources or close this "BufferedOutputStream" in a "finally" clause.
         BufferedOutputStream bufferedStream = new BufferedOutputStream(fileOut);
         try {
             // write byte array to the output stream
@@ -48,9 +48,8 @@ public class Sender {
             e.printStackTrace();
         } finally {
             // releases any system resources associated with the stream
-            if(bufferedStream!=null)
-                bufferedStream.flush();
-            bufferedStream.close();
+            if(bufferedStream != null)
+                bufferedStream.close();
         }
         //write(byte[] b, int off, int len)
         System.out.println("SHA256M LENGTH " + SHA256M.length );
@@ -61,6 +60,7 @@ public class Sender {
         //save into a file named "message.add.msg" and display it as hexadecimal bytes
         sizeOfByteArray = 1024; //for AES encryption
         Cipher cipher = Cipher.getInstance("AES/CBC/NoPadding", "SunJCE");
+        // Use a dynamically-generated, random IV.
         cipher.init(Cipher.ENCRYPT_MODE, keyXY,new IvParameterSpec(IV.getBytes("UTF-8")));
         processFile(cipher,"message.dd", "message.add-msg",sizeOfByteArray, true, false);
         //append the message M read from the file specified in step 3 to the file message.add-msg "piece by piece"
@@ -75,10 +75,10 @@ public class Sender {
 //        **********************************************************
         //Calculate the RSA Encryption of
         sizeOfByteArray = 117; //for RSA encryption, block size 117
-        Cipher cipher2 = Cipher.getInstance("RSA/ECB/PKCS1Padding", "SunJCE");
+        cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding", "SunJCE");
         SecureRandom random = new SecureRandom();
-        cipher2.init(Cipher.ENCRYPT_MODE, pubKeyY, random);
-        processFile(cipher2,"message.add-msg", "message.rsacipher",sizeOfByteArray, false, true);
+        cipher.init(Cipher.ENCRYPT_MODE, pubKeyY, random);
+        processFile(cipher,"message.add-msg", "message.rsacipher",sizeOfByteArray, false, true);
         input.close();
         //bufferedStream.close(); //commented out was causing issues on the server, but not on IntelliJ
     }
@@ -88,7 +88,6 @@ public class Sender {
     public static PublicKey readPubKeyFromFile(String keyFileName)
             throws IOException {
         InputStream in = new FileInputStream(keyFileName);
-        //Sender.class.getResourceAsStream(keyFileName);
         ObjectInputStream oin =
                 new ObjectInputStream(new BufferedInputStream(in));
         try {
@@ -97,8 +96,7 @@ public class Sender {
             System.out.println("Read from " + keyFileName + ": modulus = " + m.toString() + ", exponent = " + e.toString() + "\n");
             RSAPublicKeySpec keySpec = new RSAPublicKeySpec(m, e);
             KeyFactory factory = KeyFactory.getInstance("RSA");
-            PublicKey key = factory.generatePublic(keySpec);
-            return key;
+            return factory.generatePublic(keySpec);
         } catch (Exception e) {
             throw new RuntimeException("Spurious serialisation error", e);
         } finally {
@@ -106,8 +104,10 @@ public class Sender {
         }
     }
     public static byte[] hashingMessage(String f) throws Exception {
+        //Use try-with-resources or close this "BufferedInputStream" in a "finally" clause.
         BufferedInputStream file = new BufferedInputStream(new FileInputStream(f));
         MessageDigest md = MessageDigest.getInstance("SHA-256");
+        // Use try-with-resources or close this "DigestInputStream" in a "finally" clause.
         DigestInputStream in = new DigestInputStream(file, md);
         int i;
         byte[] buffer = new byte[BUFFER_SIZE];
@@ -119,24 +119,17 @@ public class Sender {
         PrintWriter output = new PrintWriter("message.dd"); //if need be switch to FileOutputStream
         byte[] hash = md.digest();
         System.out.println("The SHA256(M):");
-        for (int k=0, j=0; k<hash.length; k++, j++) {
-            output.format("%02X ", hash[k]); //to latter save to message.dd
-            System.out.format("%2X ", hash[k]) ;
-            if (j >= 15) {
-                System.out.println("");
-                j=-1;
-            }
+        for (int j = 0; j < hash.length; j++) {
+            System.out.format("%02x", hash[j]);
         }
         output.close();
         System.out.println("");
         return hash;
     }
     //the method processFile is derived from  https://www.novixys.com/blog/java-aes-example/
-    static private void processFile(Cipher ci,String inFile,String outFile, int sizeOfByteArray, boolean doingAESofSHA256Hash, boolean doingRSA) //added parameter sizeOfByteArray, doingAESofSHA256Hast
-            throws javax.crypto.IllegalBlockSizeException,
-            javax.crypto.BadPaddingException,
-            java.io.IOException
-    {
+    private static void processFile(Cipher ci,String inFile,String outFile, int sizeOfByteArray, boolean doingAESofSHA256Hash, boolean doingRSA) //added parameter sizeOfByteArray, doingAESofSHA256Hast
+            throws javax.crypto.IllegalBlockSizeException, javax.crypto.BadPaddingException, java.io.IOException {
+        // Use try-with-resources or close streams in "finally" clause.
         try (FileInputStream in = new FileInputStream(inFile);
              FileOutputStream out = new FileOutputStream(outFile))
         {
@@ -146,54 +139,47 @@ public class Sender {
             long counter = 0; //added line
             byte[] ibuf = new byte[sizeOfByteArray];
             int len;
-            while ((len = in.read(ibuf)) != -1) {
-                counter = counter + sizeOfByteArray; //added line
-                //System.out.println("The current counter is " + counter); //added line
-                if(doingAESofSHA256Hash) {
+while ((len = in.read(ibuf)) != -1) {
+                counter += len; //added line
+                System.out.println("Counter " + counter); //added line
+                if (doingAESofSHA256Hash) {
+                    if (counter == sizeOfFile) {
+                        System.out.println("Last block of AES of SHA256 hash");
+                        //if last block of AES of SHA256 hash
+                        //pad the last block with 0's
+                        byte[] paddedIbuf = new byte[1024];
+                        System.arraycopy(ibuf, 0, paddedIbuf, 0, ibuf.length);
+                        byte[] obuf = ci.update(paddedIbuf);
+                        if ( obuf != null ) out.write(obuf);
+                    } else {
+                        System.out.println("Not last block of AES of SHA256 hash");
+                        byte[] obuf = ci.update(ibuf, 0, len);
+                        if ( obuf != null ) out.write(obuf);
+                    }
+                } else if (doingRSA) {
+                    if (counter == sizeOfFile) {
+                        System.out.println("Last block of RSA");
+                        //if last block of RSA
+                        //pad the last block with 0's
+                        byte[] paddedIbuf = new byte[117];
+                        System.arraycopy(ibuf, 0, paddedIbuf, 0, ibuf.length);
+                        byte[] obuf = ci.update(paddedIbuf);
+                        if ( obuf != null ) out.write(obuf);
+                    } else {
+                        System.out.println("Not last block of RSA");
+                        byte[] obuf = ci.update(ibuf, 0, len);
+                        if ( obuf != null ) out.write(obuf);
+                    }
+                } else {
                     byte[] obuf = ci.update(ibuf, 0, len);
                     if ( obuf != null ) out.write(obuf);
-                    System.out.println("The SHA256(M) Encrypted with AES is:");
-                    for (int k=0, j=0; k<obuf.length; k++, j++) {
-                        System.out.format("%2X ", obuf[k]) ;
-                        if (j >= 15) {
-                            System.out.println("");
-                            j=-1;
-                        }
-                    }
-                }
-                if(doingRSA) {
-                    //last block is not full
-                    if((sizeOfFile - counter) < 0) {
-                        int size = (int) (counter - sizeOfFile); //gets remaining size of last block
-                        byte[] lastBlock = Arrays.copyOf(ibuf, size);
-                        System.out.println("THE LAST BLOCK: ");
-                        for (int k=0, j=0; k<lastBlock.length; k++, j++) {
-                            System.out.format("%2X ", lastBlock[k]) ;
-                            if (j >= 15) {
-                                System.out.println("");
-                                j=-1;
-                            }
-                        }
-                        byte[] obuf = ci.doFinal(lastBlock);
-                        if ( obuf != null ) out.write(obuf);
-                    }
-                    //not the last block
-                    if((sizeOfFile - counter) >= 0) {
-                        byte[] obuf = ci.doFinal(ibuf);
-                        if ( obuf != null ) out.write(obuf);
-                    }
                 }
             }
-            //System.out.println("The leftovers being processed are " + (counter - sizeOfFile)); //added line
-            //byte[] lastPartition = new byte[(counter - sizeOfFile)];
-            if (doingAESofSHA256Hash) {
-                byte[] obuf = ci.doFinal();
-                if ( obuf != null ) out.write(obuf);
-            }
+
         }
     }
     //appendToFile derived from https://stackoverflow.com/questions/32208792/how-do-i-use-buffered-streams-to-append-to-a-file-in-java
-    static private void appendToFile(String inFile,String outFile)
+    private static void appendToFile(String inFile,String outFile)
             throws java.io.IOException
     {
         try (FileInputStream in = new FileInputStream(inFile);
