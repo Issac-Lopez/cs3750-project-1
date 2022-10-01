@@ -18,8 +18,6 @@ public class Receiver {
     private static int BUFFER_SIZE = 32 * 1024;
     static String IV = "AAAAAAAAAAAAAAAA";
     static byte[] SHA256MfromDecryption;
-    public Receiver() throws IOException {
-    }
     //1. keys copied to the Sender folder
     public static void main(String[] args) throws Exception {
         int sizeOfByteArray;
@@ -27,6 +25,8 @@ public class Receiver {
         PrivateKey privateKeyY = readPrivKeyFromFile("YPrivate.key");
         String symmetricKeyString = new String(Files.readAllBytes(Paths.get("symmetric.key")));
         symmetricKeyString = symmetricKeyString.substring(0,16); //substring used to eliminate invisible characters
+        // Replace charset name argument with StandardCharsets.UTF_8
+        byte[] symmetricKey = symmetricKeyString.getBytes("UTF-8");
         SecretKeySpec keyXY = new SecretKeySpec(symmetricKeyString.getBytes("UTF-8"), "AES");
         //3. get the name of the message file
         Scanner input = new Scanner(System.in);
@@ -34,7 +34,8 @@ public class Receiver {
         String messageFileName = input.nextLine();
         //4. Perform the RSA decryption
         sizeOfByteArray = 128; //for RSA decryption, block size is 128
-        Cipher cipher2 = Cipher.getInstance("RSA/ECB/PKCS1Padding", "SunJCE");
+        // Use secure mode and padding scheme
+        Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding", "SunJCE");
         cipher2.init(Cipher.DECRYPT_MODE, privateKeyY);
         processFile(cipher2,"message.rsacipher", "message.add-msg",sizeOfByteArray, false, true);
         // 5.get the AES encrypted hash file along with the message file from message.add-msg
@@ -60,7 +61,20 @@ public class Receiver {
     // START OF HELPER METHODS ---------------------------------------------------------------
     // read key parameters from a file and generate the public key
     // read key parameters from a file and generate the private key
+    // Sender.class.getResourceAsStream(keyFileName);
+    // assume usrInput is a string conating user input regarding the file name of the message file
+    // buffereredinput ... msgfile = new bufferedinputstream(new fileinputstream(usrinput));
+    // create byte array  whose size is BLOCK_SIZE (117 bytes OR 1600 kb)
+    // assuming the array is named plaintext[]
+    // int numBytesRead = msgfile.read(plaintext, 0, BLOCK_SIZE);
+    // if (numBytesRead == -1) break;
+    // if nunBytesRead is less than plaintext.length but still greater than 0,
+    // then create a new byte array of size numBytesRead and copy the contents of plaintext
+    // to the new array
+    // but loop must terminate after completing the last block in current iteration
+
     public static PrivateKey readPrivKeyFromFile(String keyFileName) throws IOException {
+
         InputStream in = new FileInputStream(keyFileName);
         //Sender.class.getResourceAsStream(keyFileName);
         ObjectInputStream oin = new ObjectInputStream(new BufferedInputStream(in));
@@ -70,75 +84,72 @@ public class Receiver {
             System.out.println("Read from " + keyFileName + ": modulus = " + m.toString() + ", exponent = " + e.toString() + "\n");
             RSAPrivateKeySpec keySpec = new RSAPrivateKeySpec(m, e);
             KeyFactory factory = KeyFactory.getInstance("RSA");
-            PrivateKey key = factory.generatePrivate(keySpec);
-            return key;
+            // mmediately return this expression instead of assigning it to the temporary variable "key"
+            return factory.generatePrivate(keySpec);
         } catch (Exception e) {
+            // Define and throw a dedicated exception instead of using a generic one.
             throw new RuntimeException("Spurious serialisation error", e);
         } finally {
             oin.close();
         }
     }
-    public static byte[] hashingMessage(String f) throws Exception {
-        BufferedInputStream file = new BufferedInputStream(new FileInputStream(f));
-        MessageDigest md = MessageDigest.getInstance("SHA-256");
-        DigestInputStream in = new DigestInputStream(file, md);
-        int i;
-        byte[] buffer = new byte[BUFFER_SIZE];
-        do {
-            i = in.read(buffer, 0, BUFFER_SIZE);
-        } while (i == BUFFER_SIZE);
-        md = in.getMessageDigest();
-        in.close();
+    public static byte[] hashingMessage(String f) throws Exception { // Define and throw a dedicated exception instead of using a generic one.
+        // Use try-with-resources or close this "BufferedInputStream" in a "finally" clause
+        try (BufferedInputStream bufferedInputStream = new BufferedInputStream(new FileInputStream(f))) {
+            MessageDigest messageDigest = MessageDigest.getInstance("SHA-256");
+            byte[] dataBytes = new byte[BUFFER_SIZE];
+            int bytesRead = 0;
+            while ((bytesRead = bufferedInputStream.read(dataBytes)) != -1) {
+                messageDigest.update(dataBytes, 0, bytesRead);
+            }
+            byte[] hash = messageDigest.digest();
+            //code was modified from https://www.tutorialspoint.com/java/io/bufferedoutputstream_write_byte.htm
+            try (BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(new FileOutputStream("message.dd"))) {
+                bufferedOutputStream.write(hash);
+            }
+            return hash;
+        }
         //PrintWriter output = new PrintWriter("message.dd"); //if need be switch to FileOutputStream
         byte[] hash = md.digest();
         System.out.println("The SHA256(M):");
-        for (int k=0, j=0; k<hash.length; k++, j++) {
-            //output.format("%02X ", hash[k]); //to latter save to message.dd
-            System.out.format("%2X ", hash[k]) ;
-            if (j >= 15) {
-                System.out.println("");
-                j=-1;
-            }
+        for (int i = 0; i < hash.length; i++) {
+            System.out.format("%02x", hash[i]);
         }
         //output.close();
         System.out.println("");
         return hash;
     }
     //the method processFile is derived from  https://www.novixys.com/blog/java-aes-example/
-    static private void processFile(Cipher ci,String inFile,String outFile, int sizeOfByteArray, boolean doingAESofSHA256Hash, boolean doingRSA) //added parameter sizeOfByteArray, doingAESofSHA256Hast
+    private static void processFile(Cipher ci,String inFile,String outFile, int sizeOfByteArray, boolean doingAESofSHA256Hash, boolean doingRSA) //added parameter sizeOfByteArray, doingAESofSHA256Hast
             throws javax.crypto.IllegalBlockSizeException,
             javax.crypto.BadPaddingException,
             java.io.IOException
     {
-        try (FileInputStream in = new FileInputStream(inFile);
-             FileOutputStream out = new FileOutputStream(outFile))
-        {
-            File fileToCheckSize = new File(inFile); //added line
-            long sizeOfFile = fileToCheckSize.length(); //added line, gets file size in bytes
-            System.out.println("Size of incoming file " + sizeOfFile); //added line
-            long counter = 0; //added line
+        // Use try-with-resources or close streams in a "finally" clause
+        try (FileInputStream fis = new FileInputStream(inFile);
+             FileOutputStream fos = new FileOutputStream(outFile);
+             CipherOutputStream cos = new CipherOutputStream(fos, ci)) {
             byte[] ibuf = new byte[sizeOfByteArray];
             int len;
-            while ((len = in.read(ibuf)) != -1) {
-                counter = counter + sizeOfByteArray; //added line
-                //System.out.println("The current counter is " + counter); //added line
+            while ((len = fis.read(ibuf)) != -1) {
                 if(doingAESofSHA256Hash) {
-                    byte[] obuf = ci.update(ibuf, 0, len);
-                    if ( obuf != null ) out.write(obuf);
-                    System.out.println("The SHA256(M) Decrypted with AES is:");
-                    for (int k=0, j=0; k<obuf.length; k++, j++) {
-                        System.out.format("%2X ", obuf[k]) ;
-                        if (j >= 15) {
-                            System.out.println("");
-                            j=-1;
-                        }
+                    if(len < sizeOfByteArray) {
+                        byte[] temp = new byte[len];
+                        System.arraycopy(ibuf, 0, temp, 0, len);
+                        cos.write(temp);
+                    } else {
+                        cos.write(ibuf, 0, len);
                     }
-                }
-                if(doingRSA) {
-                    byte[] obuf = ci.doFinal(ibuf, 0, len);
-                    if ( obuf != null ) out.write(obuf);
+                } else {
+                    cos.write(ibuf, 0, len);
                 }
             }
+        }
+         finally {
+             if (fis != null) fis.close();
+             if (fos != null) fos.close();
+             if (cos != null) cos.close();
+         }
             System.out.println("The leftovers being processed are " + (counter - sizeOfFile)); //added line
             //byte[] lastPartition = new byte[(counter - sizeOfFile)];
             if (doingAESofSHA256Hash) {
@@ -147,29 +158,41 @@ public class Receiver {
             }
         }
     }
-    static private void getHashAndMessageFiles(String inFile,String toHashFile, String toMessageFile)
+    private static void getHashAndMessageFiles(String inFile,String toHashFile, String toMessageFile)
             throws java.io.IOException
     {
         //devived from https://stackoverflow.com/questions/18811608/how-to-read-fixed-number-of-bytes-from-a-file-in-a-loop-in-java
         //as well as https://stackoverflow.com/questions/32208792/how-do-i-use-buffered-streams-to-append-to-a-file-in-java
-        try (FileInputStream in = new FileInputStream(inFile);
-             FileOutputStream out = new FileOutputStream(toHashFile))
-        {
-            //write the hash file
-            byte[] result = new byte[32]; //to get hash values
-            in.read(result, 0, 32);//read(byte array, offset, how many bytes to read), fills byte array result
-            out.write(result, 0, 32);
-            //write the message file
-            FileOutputStream out2 = new FileOutputStream(toMessageFile);
-            byte[] buf2 = new byte[1024];
-            int len;
-            while ((len = in.read(buf2)) != -1) {
-                out2.write(buf2, 0, len);
+        // Use try-with-resources or close this "BufferedInputStream" in a "finally" clause
+        try (BufferedInputStream bufferedInputStream = new BufferedInputStream(new FileInputStream(inFile))) {
+            MessageDigest messageDigest = MessageDigest.getInstance("SHA-256");
+            byte[] dataBytes = new byte[BUFFER_SIZE];
+            int bytesRead = 0;
+            while ((bytesRead = bufferedInputStream.read(dataBytes)) != -1) {
+                messageDigest.update(dataBytes, 0, bytesRead);
             }
-            out.flush();
+            byte[] hash = messageDigest.digest();
+            //code was modified from https://www.tutorialspoint.com/java/io/bufferedoutputstream_write_byte.htm
+            try (BufferedOutputStream bufferedOutputStream = new BufferedOutputStream(new FileOutputStream(toHashFile))) {
+                bufferedOutputStream.write(hash);
+            }
+            //PrintWriter output = new PrintWriter("message.dd"); //if need be switch to FileOutputStream
+            byte[] hash = md.digest();
+            System.out.println("The SHA256(M):");
+            for (int k=0, j=0; k<hash.length; k++, j++) {
+                //output.format("%02X ", hash[k]); //to latter save to message.dd
+                System.out.format("%2X ", hash[k]) ;
+                if (j >= 15) {
+                    System.out.println("");
+                    j=-1;
+                }
+            }
+            //output.close();
+            System.out.println("");
+            return hash;
         }
     }
-    static private byte[] getHashMadeBySender(String inFile)
+    private static byte[] getHashMadeBySender(String inFile)
             throws java.io.IOException
     {
         //devived from https://stackoverflow.com/questions/18811608/how-to-read-fixed-number-of-bytes-from-a-file-in-a-loop-in-java
