@@ -4,6 +4,7 @@
 package project1.Sender;
 
 import java.io.*;
+import java.nio.charset.StandardCharsets;
 import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.*;
@@ -11,7 +12,6 @@ import java.security.spec.RSAPublicKeySpec;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.math.BigInteger;
-import java.util.Arrays;
 import java.util.Scanner;
 import javax.crypto.Cipher;
 public class Sender {
@@ -26,7 +26,7 @@ public class Sender {
         PublicKey pubKeyY = readPubKeyFromFile("YPublic.key");
         String symmetricKeyString = new String(Files.readAllBytes(Paths.get("symmetric.key")));
         symmetricKeyString = symmetricKeyString.substring(0,16); // used to eliminate invisible characters
-        SecretKeySpec keyXY = new SecretKeySpec(symmetricKeyString.getBytes("UTF-8"), "AES");
+        SecretKeySpec keyXY = new SecretKeySpec(symmetricKeyString.getBytes(StandardCharsets.UTF_8), "AES");
         //3. get the name of the message file
         Scanner input = new Scanner(System.in);
         System.out.println("Input the name of the message file, such as 'test.jpg': ");
@@ -48,8 +48,7 @@ public class Sender {
             e.printStackTrace();
         } finally {
             // releases any system resources associated with the stream
-            if(bufferedStream != null)
-                bufferedStream.close();
+            bufferedStream.close();
         }
         //write(byte[] b, int off, int len)
         System.out.println("SHA256M LENGTH " + SHA256M.length );
@@ -64,12 +63,12 @@ public class Sender {
         cipher.init(Cipher.ENCRYPT_MODE, keyXY,new IvParameterSpec(IV.getBytes("UTF-8")));
         processFile(cipher,"message.dd", "message.add-msg",sizeOfByteArray, true, false);
         //append the message M read from the file specified in step 3 to the file message.add-msg "piece by piece"
-        appendToFile(messageFileName,"message.add-msg");
+        appendToFile(messageFileName);
         //6.
 //        NOTE***************************************
 //        For option 1 the RSA encryption is commented out in Sender.java because the encryption fails
-//        on the last block and as a result it generates message.add-msg and and cannot
-//        generate message.rsacipher. For testing I have been copying message.add-msg to
+//        on the last block and as a result it generates message.add-msg and cannot
+//        generate message.rsacipher. For testing, I have been copying message.add-msg to
 //        the receiver folder. The RSA decryption is also commented out in the Receiver.java
 //        because I could not get it working in the sender.
 //        **********************************************************
@@ -99,15 +98,25 @@ public class Sender {
             return factory.generatePublic(keySpec);
         } catch (Exception e) {
             throw new RuntimeException("Spurious serialisation error", e);
-        } finally {
-            oin.close();
+        } finally { // this is necessary because oin is a CheckedInputStream
+            oin.close(); // close the stream
         }
     }
+    // hashing the message file
     public static byte[] hashingMessage(String f) throws Exception {
         //Use try-with-resources or close this "BufferedInputStream" in a "finally" clause.
         BufferedInputStream file = new BufferedInputStream(new FileInputStream(f));
         MessageDigest md = MessageDigest.getInstance("SHA-256");
         // Use try-with-resources or close this "DigestInputStream" in a "finally" clause.
+//        try {
+//            DigestInputStream in = new DigestInputStream(file, md);
+//            // read the file and update the hash calculation
+//            while (in.read() != -1) ;
+//            // get the hash value as byte array
+//            return md.digest();
+//        } finally {
+//            file.close();
+//        }
         DigestInputStream in = new DigestInputStream(file, md);
         int i;
         byte[] buffer = new byte[BUFFER_SIZE];
@@ -116,11 +125,11 @@ public class Sender {
         } while (i == BUFFER_SIZE);
         md = in.getMessageDigest();
         in.close();
-        PrintWriter output = new PrintWriter("message.dd"); //if need be switch to FileOutputStream
+        FileOutputStream output = new FileOutputStream("message.dd");
         byte[] hash = md.digest();
-        System.out.println("The SHA256(M):");
-        for (int j = 0; j < hash.length; j++) {
-            System.out.format("%02x", hash[j]);
+        System.out.println("The SHA256(M):"); // for testing
+        for (byte b : hash) {
+            System.out.format("%02x", b);
         }
         output.close();
         System.out.println("");
@@ -128,20 +137,41 @@ public class Sender {
     }
     //the method processFile is derived from  https://www.novixys.com/blog/java-aes-example/
     private static void processFile(Cipher ci,String inFile,String outFile, int sizeOfByteArray, boolean doingAESofSHA256Hash, boolean doingRSA) //added parameter sizeOfByteArray, doingAESofSHA256Hast
-            throws javax.crypto.IllegalBlockSizeException, javax.crypto.BadPaddingException, java.io.IOException {
+            throws java.io.IOException {
         // Use try-with-resources or close streams in "finally" clause.
-        try (FileInputStream in = new FileInputStream(inFile);
-             FileOutputStream out = new FileOutputStream(outFile))
-        {
+//        try (FileInputStream in = new FileInputStream(inFile);
+//             FileOutputStream out = new FileOutputStream(outFile)) {
+//            byte[] ibuf = new byte[sizeOfByteArray];
+//            int len;
+//            while ((len = in.read(ibuf)) != -1) {
+//                if (doingAESofSHA256Hash) {
+//                    //if doing AES of SHA256 hash, then pad the last block with zeros
+//                    if (len < sizeOfByteArray) {
+//                        ibuf = padLastBlock(ibuf, len);
+//                    }
+//                }
+//                if (doingRSA) {
+//                    //if doing RSA, then pad the last block with zeros
+//                    if (len < sizeOfByteArray) {
+//                        ibuf = padLastBlock(ibuf, len);
+//                    }
+//                }
+//                byte[] obuf = ci.update(ibuf, 0, len);
+//                if ( obuf != null ) out.write(obuf);
+//            }
+//            byte[] obuf = ci.doFinal();
+//            if ( obuf != null ) out.write(obuf);
+//        }
+        try (FileInputStream in = new FileInputStream(inFile); FileOutputStream out = new FileOutputStream(outFile)) {
             File fileToCheckSize = new File(inFile); //added line
             long sizeOfFile = fileToCheckSize.length(); //added line, gets file size in bytes
             System.out.println("Size of incoming file " + sizeOfFile); //added line
-            long counter = 0; //added line
+            long counter = 0;
             byte[] ibuf = new byte[sizeOfByteArray];
             int len;
-while ((len = in.read(ibuf)) != -1) {
-                counter += len; //added line
-                System.out.println("Counter " + counter); //added line
+        while ((len = in.read(ibuf)) != -1) {
+                counter += len;
+                System.out.println("Counter " + counter);
                 if (doingAESofSHA256Hash) {
                     if (counter == sizeOfFile) {
                         System.out.println("Last block of AES of SHA256 hash");
@@ -175,16 +205,13 @@ while ((len = in.read(ibuf)) != -1) {
                     if ( obuf != null ) out.write(obuf);
                 }
             }
-
         }
     }
     //appendToFile derived from https://stackoverflow.com/questions/32208792/how-do-i-use-buffered-streams-to-append-to-a-file-in-java
-    private static void appendToFile(String inFile,String outFile)
-            throws java.io.IOException
-    {
+    //this method appends the encrypted file to the encrypted file
+    private static void appendToFile(String inFile) throws java.io.IOException {
         try (FileInputStream in = new FileInputStream(inFile);
-             FileOutputStream out = new FileOutputStream(outFile,true))
-        {
+             FileOutputStream out = new FileOutputStream("message.add-msg",true)) {
             byte[] buf = new byte[1024];
             int len;
             while ((len = in.read(buf)) != -1) {

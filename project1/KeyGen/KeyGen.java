@@ -20,42 +20,40 @@ public class KeyGen {
         Scanner input = new Scanner(System.in);
         String symmetric = "";
         boolean loop = true;
-
+        // Get the key size
         while (loop) {
             System.out.print("Enter what you want the symmetric key to be (16 characters long) : ");
             symmetric = input.nextLine();
-
             if (symmetric.length() == 16) {
                 loop = false;
             } else {
                 System.out.println("The symmetric key that you entered has a character length of " + symmetric.length());
                 System.out.println("The symmetric key's length needs to be 16 characters long\n");
             }
-
             input.close();
-            //make a symmetric key file
+            // Generate a 1024-bit Digital Signature Algorithm (DSA) key pair
             PrintWriter output = new PrintWriter("symmetric.key");
             output.println(symmetric);
             output.close();
-            //Generate a pair of keys
+            // make a public key file and a private key file
             SecureRandom random = new SecureRandom();
             KeyPairGenerator generator = KeyPairGenerator.getInstance("RSA");
             generator.initialize(1024, random);  //1024: key size in bits
-
+            // Generate the pair of keys
             KeyPair pair = generator.generateKeyPair();
             Key pubKeyX = pair.getPublic();
             Key privKeyX = pair.getPrivate();
-
+            // Get the components of the public key
             KeyPairGenerator generator2 = KeyPairGenerator.getInstance("RSA");
-            generator2.initialize(1024, random);  //1024: key size in bits
+            generator2.initialize(1024, random);  // 1024: key size in bits
             KeyPair pair2 = generator2.generateKeyPair();
             Key pubKeyY = pair2.getPublic();
             Key privKeyY = pair2.getPrivate();
 
         /* next, store the keys to files, read them back from files,
            and then, encrypt & decrypt using the keys from files. */
-
-            //get the parameters of the keys: modulus and exponent
+            // Get the components of the public/private keys and store them to files
+            // get the parameters of the keys: modulus and exponent
             KeyFactory factory = KeyFactory.getInstance("RSA");
             RSAPublicKeySpec pubKSpecX = factory.getKeySpec(pubKeyX, RSAPublicKeySpec.class);
             RSAPrivateKeySpec privKSpecX = factory.getKeySpec(privKeyX, RSAPrivateKeySpec.class);
@@ -68,12 +66,12 @@ public class KeyGen {
             saveToFile("YPrivate.key", privKSpecY.getModulus(), privKSpecY.getPrivateExponent());
         }
     }
-
     //save the parameters of the public and private keys to file
     public static void saveToFile(String fileName, BigInteger mod, BigInteger exp) throws IOException {
         System.out.println("Write to " + fileName + ": modulus = " + mod.toString() + ", exponent = " + exp.toString() + "\n");
+        // create a file to store the keys
         ObjectOutputStream out = new ObjectOutputStream(new BufferedOutputStream(new FileOutputStream(fileName)));
-        try {
+        try { // write the modulus and the exponent to the file
             out.writeObject(mod);
             out.writeObject(exp);
         } catch (Exception e) {

@@ -9,7 +9,6 @@ import java.nio.file.Files;
 import java.nio.file.Paths;
 import java.security.*;
 import java.security.spec.RSAPrivateKeySpec;
-import javax.crypto.CipherOutputStream;
 import javax.crypto.spec.IvParameterSpec;
 import javax.crypto.spec.SecretKeySpec;
 import java.math.BigInteger;
@@ -53,7 +52,7 @@ public class Receiver {
         // 6. use SHA256 to hash the message file and save the hash as message.dd
         //code was modified from https://www.tutorialspoint.com/java/io/bufferedoutputstream_write_byte.htm
         SHA256MfromDecryption = hashingMessage(messageFileName); //32 bytes long
-        byte[] SHA256MfromEncryption = getHashMadeBySender("message.dd");
+        byte[] SHA256MfromEncryption = getHashMadeBySender();
         boolean areHashValuesEqual = Arrays.equals(SHA256MfromEncryption, SHA256MfromDecryption);
         if(areHashValuesEqual) {
             System.out.println("DIGITAL DIGEST PASSES THE AUTHENTICATION CHECK");
@@ -77,7 +76,6 @@ public class Receiver {
     // but loop must terminate after completing the last block in current iteration
 
     public static PrivateKey readPrivKeyFromFile(String keyFileName) throws IOException {
-
         InputStream in = new FileInputStream(keyFileName);
         //Sender.class.getResourceAsStream(keyFileName);
         try (ObjectInputStream oin = new ObjectInputStream(new BufferedInputStream(in))) {
@@ -120,7 +118,7 @@ public class Receiver {
         return hash;
     }
     //the method processFile is derived from  https://www.novixys.com/blog/java-aes-example/
-    static private void processFile(Cipher ci,String inFile,String outFile, int sizeOfByteArray, boolean doingAESofSHA256Hash, boolean doingRSA) //added parameter sizeOfByteArray, doingAESofSHA256Hast
+    private static void processFile(Cipher ci,String inFile,String outFile, int sizeOfByteArray, boolean doingAESofSHA256Hash, boolean doingRSA) //added parameter sizeOfByteArray, doingAESofSHA256Hast
             throws javax.crypto.IllegalBlockSizeException,
             javax.crypto.BadPaddingException,
             java.io.IOException
@@ -162,7 +160,7 @@ public class Receiver {
             }
         }
     }
-    static private void getHashAndMessageFiles(String inFile,String toHashFile, String toMessageFile)
+    private static void getHashAndMessageFiles(String inFile,String toHashFile, String toMessageFile)
             throws java.io.IOException
     {
         //devived from https://stackoverflow.com/questions/18811608/how-to-read-fixed-number-of-bytes-from-a-file-in-a-loop-in-java
@@ -184,12 +182,10 @@ public class Receiver {
             out.flush();
         }
     }
-    private static byte[] getHashMadeBySender(String inFile)
-            throws java.io.IOException
-    {
+    private static byte[] getHashMadeBySender() throws java.io.IOException {
         //devived from https://stackoverflow.com/questions/18811608/how-to-read-fixed-number-of-bytes-from-a-file-in-a-loop-in-java
         //as well as https://stackoverflow.com/questions/32208792/how-do-i-use-buffered-streams-to-append-to-a-file-in-java
-        try (FileInputStream in = new FileInputStream(inFile)) {
+        try (FileInputStream in = new FileInputStream("message.dd")) {
             //write the hash file
             byte[] result = new byte[32]; //to get hash values
             in.read(result, 0, 32);//read(byte array, offset, how many bytes to read), fills byte array result
