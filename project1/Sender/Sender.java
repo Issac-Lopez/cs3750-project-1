@@ -17,27 +17,23 @@ import javax.crypto.Cipher;
 public class Sender {
     private static int BUFFER_SIZE = 32 * 1024;
     static String IV = "AAAAAAAAAAAAAAAA";
-    static byte[] SHA256M;
+    static byte[] SHA256M; // SHA256 of the message
+    static String messageDigitalDigest = "message.dd";
 
-    // 1. keys copied to the Sender folder
     public static void main(String[] args) throws Exception {
         int sizeOfByteArray;
-        //2. read the keys back from the files
+        // read the keys back from the key files
         PublicKey pubKeyY = readPubKeyFromFile("YPublic.key");
-        String symmetricKeyString = new String(Files.readAllBytes(Paths.get("symmetric.key")));
+        String symmetricKeyString = new String(Files.readAllBytes(Paths.get("./symmetric.key")));
         symmetricKeyString = symmetricKeyString.substring(0,16); // used to eliminate invisible characters
         SecretKeySpec keyXY = new SecretKeySpec(symmetricKeyString.getBytes(StandardCharsets.UTF_8), "AES");
-        //3. get the name of the message file
+        // get the name of the message file
         Scanner input = new Scanner(System.in);
-        System.out.println("Input the name of the message file, such as 'test.jpg': ");
+        System.out.println("Input the name of the message file: "); // this is the file(M) that will be encrypted
         String messageFileName = input.nextLine();
-        //4. use SHA256 to hash the message file and save the hash as message.dd
-        //code for 4. was modified from https://www.tutorialspoint.com/java/io/bufferedoutputstream_write_byte.htm
+        // use SHA256 to hash the message file and save the hash as message.dd
         SHA256M = hashingMessage(messageFileName); //32 bytes long
-        String messagedd = "message.dd";
-        FileOutputStream fileOut = new FileOutputStream(new File(messagedd));
-        // Use try-with-resources or close this "BufferedOutputStream" in a "finally" clause.
-        BufferedOutputStream bufferedStream = new BufferedOutputStream(fileOut);
+        BufferedOutputStream bufferedStream = new BufferedOutputStream(new FileOutputStream(messageDigitalDigest));
         try {
             // write byte array to the output stream
             bufferedStream.write(SHA256M, 0, SHA256M.length);
@@ -50,50 +46,73 @@ public class Sender {
             // releases any system resources associated with the stream
             bufferedStream.close();
         }
-        //write(byte[] b, int off, int len)
-        System.out.println("SHA256M LENGTH " + SHA256M.length );
-        bufferedStream.write(SHA256M);
-        System.out.println("Success with messagedd");
-        //5.
-        // calculate the AES Encryption of the SHA256(M) using keyXY and
-        //save into a file named "message.add.msg" and display it as hexadecimal bytes
-        sizeOfByteArray = 1024; //for AES encryption
+        System.out.println("Do you want to invert the 1st byte in SHA256(M)? (Y or N) ");
+        String invert = input.nextLine();
+        if (invert.equals("Y")) {
+            SHA256M[0] = (byte) ~SHA256M[0];
+        } else if (invert.equals("N")) {
+            System.out.println("The 1st byte in SHA256(M) will not be inverted");
+        } else {
+            System.out.println("Invalid input");
+        }
+
+        bufferedStream.close();
+        // calculate the AES Encryption of the SHA256(M) using symmetric key and
+        // save into a file named "message.add-msg" and display it in hexadecimal bytes
         Cipher cipher = Cipher.getInstance("AES/CBC/NoPadding", "SunJCE");
-        // Use a dynamically-generated, random IV.
-        cipher.init(Cipher.ENCRYPT_MODE, keyXY,new IvParameterSpec(IV.getBytes("UTF-8")));
-        processFile(cipher,"message.dd", "message.add-msg",sizeOfByteArray, true, false);
+        cipher.init(Cipher.ENCRYPT_MODE, keyXY,new IvParameterSpec(IV.getBytes(StandardCharsets.UTF_8)));
+        byte[] encryptedSHA256M = cipher.doFinal(SHA256M);
+        // save aes cipher text into a file named "message.add-msg"
+        BufferedOutputStream bufferedStream2 = new BufferedOutputStream(new FileOutputStream("message.add-msg"));
+        bufferedStream2.write(cipher.doFinal(SHA256M));
+        // display in hexadecimal bytes
+        System.out.println("The AES Encryption of the SHA256(M) is saved in a file named \"message.add-msg\" and displayed in hexadecimal bytes: ");
+        for (byte b : encryptedSHA256M) {
+            System.out.printf("%02X ", b);
+        }
         //append the message M read from the file specified in step 3 to the file message.add-msg "piece by piece"
         appendToFile(messageFileName);
-        //6.
-//        NOTE***************************************
-//        For option 1 the RSA encryption is commented out in Sender.java because the encryption fails
-//        on the last block and as a result it generates message.add-msg and cannot
-//        generate message.rsacipher. For testing, I have been copying message.add-msg to
-//        the receiver folder. The RSA decryption is also commented out in the Receiver.java
-//        because I could not get it working in the sender.
-//        **********************************************************
-        //Calculate the RSA Encryption of
-        sizeOfByteArray = 117; //for RSA encryption, block size 117
-        cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding", "SunJCE");
-        SecureRandom random = new SecureRandom();
-        cipher.init(Cipher.ENCRYPT_MODE, pubKeyY, random);
-        processFile(cipher,"message.add-msg", "message.rsacipher",sizeOfByteArray, false, true);
+        //Calculate the RSA Encryption of the SHA256(M) using public key Y reading the file message.add-msg
+        // and save into a file named "message.rsacipher" and display it in hexadecimal bytes
+        byte[] rsaCipher = rsaEncryption(messageFileName, pubKeyY);
+        BufferedOutputStream bufferedStream3 = new BufferedOutputStream(new FileOutputStream("message.rsacipher"));
+        bufferedStream3.write(rsaCipher);
         input.close();
-        //bufferedStream.close(); //commented out was causing issues on the server, but not on IntelliJ
+        bufferedStream.close(); //commented out was causing issues on the server, but not on IntelliJ
+    }
+
+    private static byte[] rsaEncryption(String messageFileName, PublicKey pubKeyY) {
+        byte[] rsaCipher = null;
+        try {
+            Cipher cipher = Cipher.getInstance("RSA/ECB/PKCS1Padding", "SunJCE");
+            SecureRandom random = new SecureRandom();
+            cipher.init(Cipher.ENCRYPT_MODE, pubKeyY, random);
+            rsaCipher = cipher.doFinal(SHA256M);
+            System.out.println();
+            // save rsa cipher text into a file named "message.rsacipher"
+            BufferedOutputStream bufferedStream3 = new BufferedOutputStream(new FileOutputStream("message.rsacipher"));
+            bufferedStream3.write(rsaCipher);
+            // display in hexadecimal bytes
+            System.out.println("The RSA Encryption of the SHA256(M) is saved in a file named \"message.rsacipher\" and displayed in hexadecimal bytes: ");
+            for (byte b : rsaCipher) {
+                System.out.printf("%02X ", b);
+            }
+        } catch (Exception e) {
+            e.printStackTrace();
+        }
+        return rsaCipher;
     }
 //START OF HELPER METHODS--------------------------------------------------------------------------------
 
     //read key parameters from a file and generate the public key
-    public static PublicKey readPubKeyFromFile(String keyFileName)
-            throws IOException {
+    public static PublicKey readPubKeyFromFile(String keyFileName) throws IOException {
         InputStream in = new FileInputStream(keyFileName);
-        ObjectInputStream oin =
-                new ObjectInputStream(new BufferedInputStream(in));
+        ObjectInputStream oin = new ObjectInputStream(new BufferedInputStream(in));
         try {
-            BigInteger m = (BigInteger) oin.readObject();
-            BigInteger e = (BigInteger) oin.readObject();
-            System.out.println("Read from " + keyFileName + ": modulus = " + m.toString() + ", exponent = " + e.toString() + "\n");
-            RSAPublicKeySpec keySpec = new RSAPublicKeySpec(m, e);
+            BigInteger n = (BigInteger) oin.readObject();
+            BigInteger d = (BigInteger) oin.readObject();
+            System.out.println("Read from " + keyFileName + ": modulus = " + n.toString() + ", exponent = " + d.toString() + "\n");
+            RSAPublicKeySpec keySpec = new RSAPublicKeySpec(n, d);
             KeyFactory factory = KeyFactory.getInstance("RSA");
             return factory.generatePublic(keySpec);
         } catch (Exception e) {
@@ -104,66 +123,39 @@ public class Sender {
     }
     // hashing the message file
     public static byte[] hashingMessage(String f) throws Exception {
-        //Use try-with-resources or close this "BufferedInputStream" in a "finally" clause.
-        BufferedInputStream file = new BufferedInputStream(new FileInputStream(f));
-        MessageDigest md = MessageDigest.getInstance("SHA-256");
-        // Use try-with-resources or close this "DigestInputStream" in a "finally" clause.
-//        try {
-//            DigestInputStream in = new DigestInputStream(file, md);
-//            // read the file and update the hash calculation
-//            while (in.read() != -1) ;
-//            // get the hash value as byte array
-//            return md.digest();
-//        } finally {
-//            file.close();
-//        }
-        DigestInputStream in = new DigestInputStream(file, md);
-        int i;
-        byte[] buffer = new byte[BUFFER_SIZE];
-        do {
-            i = in.read(buffer, 0, BUFFER_SIZE);
-        } while (i == BUFFER_SIZE);
-        md = in.getMessageDigest();
-        in.close();
-        FileOutputStream output = new FileOutputStream("message.dd");
-        byte[] hash = md.digest();
-        System.out.println("The SHA256(M):"); // for testing
-        for (byte b : hash) {
-            System.out.format("%02x", b);
+//        BufferedInputStream file = new BufferedInputStream(new FileInputStream(f));
+//        MessageDigest md = MessageDigest.getInstance("SHA-256");
+        try {
+            MessageDigest md = MessageDigest.getInstance("SHA-256");
+            BufferedInputStream fis = new BufferedInputStream(new FileInputStream(f));
+            byte[] dataBytes = new byte[BUFFER_SIZE];
+            int nread = 0;
+            while ((nread = fis.read(dataBytes)) != -1) {
+                md.update(dataBytes, 0, nread);
+            }
+            return md.digest();
+        } catch (Exception e) {
+            throw new RuntimeException("Spurious serialisation error", e);
         }
-        output.close();
-        System.out.println("");
-        return hash;
-    }
-    //the method processFile is derived from  https://www.novixys.com/blog/java-aes-example/
-    private static void processFile(Cipher ci,String inFile,String outFile, int sizeOfByteArray, boolean doingAESofSHA256Hash, boolean doingRSA) //added parameter sizeOfByteArray, doingAESofSHA256Hast
-            throws java.io.IOException {
-        // Use try-with-resources or close streams in "finally" clause.
-//        try (FileInputStream in = new FileInputStream(inFile);
-//             FileOutputStream out = new FileOutputStream(outFile)) {
-//            byte[] ibuf = new byte[sizeOfByteArray];
-//            int len;
-//            while ((len = in.read(ibuf)) != -1) {
-//                if (doingAESofSHA256Hash) {
-//                    //if doing AES of SHA256 hash, then pad the last block with zeros
-//                    if (len < sizeOfByteArray) {
-//                        ibuf = padLastBlock(ibuf, len);
-//                    }
-//                }
-//                if (doingRSA) {
-//                    //if doing RSA, then pad the last block with zeros
-//                    if (len < sizeOfByteArray) {
-//                        ibuf = padLastBlock(ibuf, len);
-//                    }
-//                }
-//                byte[] obuf = ci.update(ibuf, 0, len);
-//                if ( obuf != null ) out.write(obuf);
-//            }
-//            byte[] obuf = ci.doFinal();
-//            if ( obuf != null ) out.write(obuf);
+//        byte[] buffer = new byte[BUFFER_SIZE];
+//        do {
+//            i = in.read(buffer, 0, BUFFER_SIZE);
+//        } while (i == BUFFER_SIZE);
+//        md = in.getMessageDigest();
+//        in.close();
+//        FileOutputStream output = new FileOutputStream(messageDigitalDigest);
+//        byte[] hash = md.digest();
+//        System.out.println("The SHA256(M):");
+//        for (byte b : hash) {
+//            System.out.format("%02x", b);
 //        }
-        try (FileInputStream in = new FileInputStream(inFile); FileOutputStream out = new FileOutputStream(outFile)) {
-            File fileToCheckSize = new File(inFile); //added line
+//        output.close();
+//        System.out.println("");
+//        return hash;
+    }
+    private static void processFile(Cipher ci, int sizeOfByteArray) throws java.io.IOException {
+        try (FileInputStream in = new FileInputStream("message.add-msg"); FileOutputStream out = new FileOutputStream("message.rsacipher")) {
+            File fileToCheckSize = new File("message.add-msg"); //added line
             long sizeOfFile = fileToCheckSize.length(); //added line, gets file size in bytes
             System.out.println("Size of incoming file " + sizeOfFile); //added line
             long counter = 0;
@@ -172,7 +164,7 @@ public class Sender {
         while ((len = in.read(ibuf)) != -1) {
                 counter += len;
                 System.out.println("Counter " + counter);
-                if (doingAESofSHA256Hash) {
+                if (false) {
                     if (counter == sizeOfFile) {
                         System.out.println("Last block of AES of SHA256 hash");
                         //if last block of AES of SHA256 hash
@@ -186,7 +178,7 @@ public class Sender {
                         byte[] obuf = ci.update(ibuf, 0, len);
                         if ( obuf != null ) out.write(obuf);
                     }
-                } else if (doingRSA) {
+                } else {
                     if (counter == sizeOfFile) {
                         System.out.println("Last block of RSA");
                         //if last block of RSA
@@ -200,15 +192,10 @@ public class Sender {
                         byte[] obuf = ci.update(ibuf, 0, len);
                         if ( obuf != null ) out.write(obuf);
                     }
-                } else {
-                    byte[] obuf = ci.update(ibuf, 0, len);
-                    if ( obuf != null ) out.write(obuf);
                 }
             }
         }
     }
-    //appendToFile derived from https://stackoverflow.com/questions/32208792/how-do-i-use-buffered-streams-to-append-to-a-file-in-java
-    //this method appends the encrypted file to the encrypted file
     private static void appendToFile(String inFile) throws java.io.IOException {
         try (FileInputStream in = new FileInputStream(inFile);
              FileOutputStream out = new FileOutputStream("message.add-msg",true)) {
