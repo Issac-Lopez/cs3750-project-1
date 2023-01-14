@@ -1,5 +1,6 @@
 # Purpose of this project
 This is a school project from my fall 2022 semester. This project was developed to apply RSA, AES, and SHA256 encryption algorithms, for confidentiality purposes, for a sender then the decryption of the file for a receiver. Although there isn't much to it, it was fun to build and I learned a ton about cryptography while creating this project!
+Created by: Issac, Kibrom, and John
 # Steps & Commands in PowerShell
 1) Generate the symmetric, public, and private key's for the sender and receiver in using the KeyGen.java file in the KeyGen directory.
 ```
